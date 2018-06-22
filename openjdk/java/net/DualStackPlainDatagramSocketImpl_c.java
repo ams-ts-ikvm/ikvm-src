@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -127,7 +127,7 @@ static cli.System.Net.Sockets.Socket socketCreate
  * Signature: (ILjava/net/InetAddress;I)V
  */
 static void socketBind
-  (JNIEnv env, cli.System.Net.Sockets.Socket fd, InetAddress iaObj, int port) {
+  (JNIEnv env, cli.System.Net.Sockets.Socket fd, InetAddress iaObj, int port, boolean exclBind) {
     SOCKETADDRESS sa;
     sa = new SOCKETADDRESS();
     int rv;
@@ -136,8 +136,7 @@ static void socketBind
                                  JNI_TRUE) != 0) {
         return;
     }
-
-    rv = bind(fd, sa);
+    rv = NET_WinBind(fd, sa, exclBind);
 
     if (rv == SOCKET_ERROR) {
         if (WSAGetLastError() == WSAEACCES) {
@@ -264,18 +263,17 @@ static int socketReceiveOrPeekData
     packetBuffer = dpObj.buf;
     packetBufferOffset = dpObj.offset;
     packetBufferLen = dpObj.bufLength;
+    /* Note: the buffer needn't be greater than 65,536 (0xFFFF)
+    * the max size of an IP packet. Anything bigger is truncated anyway.
+    *-/
+    if (packetBufferLen > MAX_PACKET_LEN) {
+        packetBufferLen = MAX_PACKET_LEN;
+    }
 
-    /*
     if (packetBufferLen > MAX_BUFFER_LEN) {
-        /* Note: the buffer needn't be greater than 65,536 (0xFFFF)
-         * the max size of an IP packet. Anything bigger is truncated anyway.
-         *-/
-        if (packetBufferLen > MAX_PACKET_LEN) {
-            packetBufferLen = MAX_PACKET_LEN;
-        }
         fullPacket = (char *)malloc(packetBufferLen);
         if (!fullPacket) {
-            JNU_ThrowOutOfMemoryError(env, "heap allocation failed");
+            JNU_ThrowOutOfMemoryError(env, "Native heap allocation failed");
             return -1;
         }
     } else {
@@ -381,8 +379,10 @@ static int socketReceiveOrPeekData
             int[] tmp = { port };
             packetAddress = NET_SockaddrToInetAddress(sa, tmp);
             port = tmp[0];
-            /* stuff the new Inetaddress into the packet */
-            dpObj.address = packetAddress;
+            if (packetAddress != NULL) {
+                /* stuff the new Inetaddress into the packet */
+                dpObj.address = packetAddress;
+            }
         }
 
         /* populate the packet */
@@ -424,7 +424,7 @@ static void socketSend
         }
         fullPacket = (char *)malloc(length);
         if (!fullPacket) {
-            JNU_ThrowOutOfMemoryError(env, "heap allocation failed");
+            JNU_ThrowOutOfMemoryError(env, "Native heap allocation failed");
             return;
         }
     } else {

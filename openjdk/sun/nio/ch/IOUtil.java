@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -37,7 +37,7 @@ import java.nio.channels.spi.*;
  * File-descriptor based I/O utilities that are shared by NIO classes.
  */
 
-class IOUtil {
+public class IOUtil {
 
     private IOUtil() { }                // No instantiation
 
@@ -68,7 +68,7 @@ class IOUtil {
     }
 
     static int read(FileDescriptor fd, ByteBuffer dst, long position,
-                    NativeDispatcher nd, Object lock)
+                    NativeDispatcher nd)
         throws IOException
     {
         if (dst.isReadOnly())
@@ -76,18 +76,15 @@ class IOUtil {
 
         if (position != -1)
         {
-            synchronized (lock)
+            long prevpos = fd.getFilePointer();
+            try
             {
-                long prevpos = fd.getFilePointer();
-                try
-                {
-                    fd.seek(position);
-                    return read(fd, dst, -1, nd, null);
-                }
-                finally
-                {
-                    fd.seek(prevpos);
-                }
+                fd.seek(position);
+                return read(fd, dst, -1, nd);
+            }
+            finally
+            {
+                fd.seek(prevpos);
             }
         }
 
@@ -120,23 +117,20 @@ class IOUtil {
     }
 
     static int write(FileDescriptor fd, ByteBuffer src, long position,
-                     NativeDispatcher nd, Object lock)
+                     NativeDispatcher nd)
         throws IOException
     {
         if (position != -1)
         {
-            synchronized (lock)
+            long prevpos = fd.getFilePointer();
+            try
             {
-                long prevpos = fd.getFilePointer();
-                try
-                {
-                    fd.seek(position);
-                    return write(fd, src, -1, nd, null);
-                }
-                finally
-                {
-                    fd.seek(prevpos);
-                }
+                fd.seek(position);
+                return write(fd, src, -1, nd);
+            }
+            finally
+            {
+                fd.seek(prevpos);
             }
         }
 
@@ -176,4 +170,9 @@ class IOUtil {
     {
         return nd.write(fd, bufs, offset, length);
     }
+
+    /**
+     * Used to trigger loading of native libraries
+     */
+    public static void load() { }
 }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2009-2012 Jeroen Frijters
+  Copyright (C) 2009-2013 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -55,6 +55,16 @@ namespace IKVM.Reflection
 			get { return module.ModuleVersionId; }
 		}
 
+		public string ImageRuntimeVersion
+		{
+			get { return module.__ImageRuntimeVersion; }
+		}
+
+		public int MDStreamVersion
+		{
+			get { return module.MDStreamVersion; }
+		}
+
 		private void CheckManifestModule()
 		{
 			if (!IsManifestModule)
@@ -78,7 +88,7 @@ namespace IKVM.Reflection
 		{
 			if (!imported)
 			{
-				module.stream.Dispose();
+				module.Dispose();
 			}
 		}
 
@@ -207,7 +217,16 @@ namespace IKVM.Reflection
 			throw new NotSupportedException();
 		}
 
-		public virtual bool __GetSectionInfo(int rva, out string name, out int characteristics)
+		public bool __GetSectionInfo(int rva, out string name, out int characteristics)
+		{
+			int virtualAddress;
+			int virtualSize;
+			int pointerToRawData;
+			int sizeOfRawData;
+			return __GetSectionInfo(rva, out name, out characteristics, out virtualAddress, out virtualSize, out pointerToRawData, out sizeOfRawData);
+		}
+
+		public virtual bool __GetSectionInfo(int rva, out string name, out int characteristics, out int virtualAddress, out int virtualSize, out int pointerToRawData, out int sizeOfRawData)
 		{
 			throw new NotSupportedException();
 		}
@@ -287,6 +306,11 @@ namespace IKVM.Reflection
 			throw new NotSupportedException();
 		}
 
+		public virtual CustomModifiers __ResolveTypeSpecCustomModifiers(int typeSpecToken, Type[] genericTypeArguments, Type[] genericMethodArguments)
+		{
+			throw new NotSupportedException();
+		}
+
 		public int MetadataToken
 		{
 			get { return IsResource() ? 0 : 1; }
@@ -353,7 +377,7 @@ namespace IKVM.Reflection
 			{
 				throw new MissingModuleException((MissingModule)this);
 			}
-			return parser.Expand(type, this.Assembly, throwOnError, className, false, ignoreCase);
+			return parser.Expand(type, this, throwOnError, className, false, ignoreCase);
 		}
 
 		public Type[] GetTypes()
@@ -447,6 +471,16 @@ namespace IKVM.Reflection
 			return CustomAttributeData.__GetCustomAttributes(this, attributeType, inherit);
 		}
 
+		public IList<CustomAttributeData> GetCustomAttributesData()
+		{
+			return CustomAttributeData.GetCustomAttributes(this);
+		}
+
+		public IEnumerable<CustomAttributeData> CustomAttributes
+		{
+			get { return GetCustomAttributesData(); }
+		}
+
 		public virtual IList<CustomAttributeData> __GetPlaceholderAssemblyCustomAttributes(bool multiple, bool security)
 		{
 			return Empty<CustomAttributeData>.Array;
@@ -533,6 +567,28 @@ namespace IKVM.Reflection
 		{
 			return CustomAttributeData.GetCustomAttributesImpl(new List<CustomAttributeData>(), this, token, null);
 		}
+
+		public bool __TryGetImplMap(int token, out ImplMapFlags mappingFlags, out string importName, out string importScope)
+		{
+			foreach (int i in ImplMap.Filter(token))
+			{
+				mappingFlags = (ImplMapFlags)(ushort)ImplMap.records[i].MappingFlags;
+				importName = GetString(ImplMap.records[i].ImportName);
+				importScope = GetString(ModuleRef.records[(ImplMap.records[i].ImportScope & 0xFFFFFF) - 1]);
+				return true;
+			}
+			mappingFlags = 0;
+			importName = null;
+			importScope = null;
+			return false;
+		}
+
+#if !NO_AUTHENTICODE
+		public virtual System.Security.Cryptography.X509Certificates.X509Certificate GetSignerCertificate()
+		{
+			return null;
+		}
+#endif // !NO_AUTHENTICODE
 
 		internal abstract Type GetModuleType();
 

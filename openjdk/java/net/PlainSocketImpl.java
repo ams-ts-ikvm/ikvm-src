@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, 2011, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -54,6 +54,12 @@ class PlainSocketImpl extends AbstractPlainSocketImpl
     /* If the version supports a dual stack TCP implementation */
     private static boolean useDualStackImpl = false;
 
+    /* sun.net.useExclusiveBind */
+    private static String exclBindProp;
+
+    /* True if exclusive binding is on for Windows */
+    private static boolean exclusiveBind = true;
+
     static {
         java.security.AccessController.doPrivileged( new PrivilegedAction<Object>() {
                 public Object run() {
@@ -62,6 +68,7 @@ class PlainSocketImpl extends AbstractPlainSocketImpl
                         version = Float.parseFloat(System.getProperties().getProperty("os.version"));
                         preferIPv4Stack = Boolean.parseBoolean(
                                           System.getProperties().getProperty("java.net.preferIPv4Stack"));
+                        exclBindProp = System.getProperty("sun.net.useExclusiveBind");
                     } catch (NumberFormatException e ) {
                         assert false : e;
                     }
@@ -84,7 +91,15 @@ class PlainSocketImpl extends AbstractPlainSocketImpl
 
         // (version >= 6.0) implies Vista or greater.
         if (version >= 6.0 && !preferIPv4Stack) {
-            useDualStackImpl = true;
+                useDualStackImpl = true;
+        }
+
+        if (exclBindProp != null) {
+            // sun.net.useExclusiveBind is true
+            exclusiveBind = exclBindProp.length() == 0 ? true
+                    : Boolean.parseBoolean(exclBindProp);
+        } else if (version < 6.0) {
+            exclusiveBind = false;
         }
     }
 
@@ -93,9 +108,9 @@ class PlainSocketImpl extends AbstractPlainSocketImpl
      */
     PlainSocketImpl() {
         if (useDualStackImpl) {
-            impl = new DualStackPlainSocketImpl();
+            impl = new DualStackPlainSocketImpl(exclusiveBind);
         } else {
-            impl = new TwoStacksPlainSocketImpl();
+            impl = new TwoStacksPlainSocketImpl(exclusiveBind);
         }
     }
 
@@ -104,9 +119,9 @@ class PlainSocketImpl extends AbstractPlainSocketImpl
      */
     PlainSocketImpl(FileDescriptor fd) {
         if (useDualStackImpl) {
-            impl = new DualStackPlainSocketImpl(fd);
+            impl = new DualStackPlainSocketImpl(fd, exclusiveBind);
         } else {
-            impl = new TwoStacksPlainSocketImpl(fd);
+            impl = new TwoStacksPlainSocketImpl(fd, exclusiveBind);
         }
     }
 
@@ -190,14 +205,17 @@ class PlainSocketImpl extends AbstractPlainSocketImpl
     }
 
     protected synchronized void accept(SocketImpl s) throws IOException {
-        // pass in the real impl not the wrapper.
-        SocketImpl delegate = ((PlainSocketImpl)s).impl;
-        delegate.address = new InetAddress();
-        delegate.fd = new FileDescriptor();
-        impl.accept(delegate);
-
-        // set fd to delegate's fd to be compatible with older releases
-        s.fd = delegate.fd;
+        if (s instanceof PlainSocketImpl) {
+            // pass in the real impl not the wrapper.
+            SocketImpl delegate = ((PlainSocketImpl)s).impl;
+            delegate.address = new InetAddress();
+            delegate.fd = new FileDescriptor();
+            impl.accept(delegate);
+            // set fd to delegate's fd to be compatible with older releases
+            s.fd = delegate.fd;
+        } else {
+            impl.accept(s);
+        }
     }
 
     void setFileDescriptor(FileDescriptor fd) {
@@ -328,7 +346,7 @@ class PlainSocketImpl extends AbstractPlainSocketImpl
 
     void socketSetOption(int cmd, boolean on, Object value)
         throws SocketException {
-        socketSetOption(cmd, on, value);
+        impl.socketSetOption(cmd, on, value);
     }
 
     int socketGetOption(int opt, Object iaContainerObj) throws SocketException {

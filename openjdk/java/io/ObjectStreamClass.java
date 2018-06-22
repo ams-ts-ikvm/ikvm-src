@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2011, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -50,7 +50,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import sun.misc.Unsafe;
+import sun.reflect.CallerSensitive;
+import sun.reflect.Reflection;
 import sun.reflect.ReflectionFactory;
+import sun.reflect.misc.ReflectUtil;
 
 /**
  * Serialization's descriptor for classes.  It contains the name and
@@ -170,7 +173,7 @@ public class ObjectStreamClass implements Serializable {
     private volatile ClassDataSlot[] dataLayout;
 
     /** serialization-appropriate constructor, or null if none */
-    private Constructor cons;
+    private Constructor<?> cons;
     /** class-defined writeObject method, or null if none */
     private Method writeObjectMethod;
     /** class-defined readObject method, or null if none */
@@ -262,7 +265,17 @@ public class ObjectStreamClass implements Serializable {
      *
      * @return  the <code>Class</code> instance that this descriptor represents
      */
+    @CallerSensitive
     public Class<?> forClass() {
+        if (cl == null) {
+            return null;
+        }
+        if (System.getSecurityManager() != null) {
+            Class<?> caller = Reflection.getCallerClass();
+            if (ReflectUtil.needsPackageAccessCheck(caller.getClassLoader(), cl.getClassLoader())) {
+                ReflectUtil.checkPackageAccess(cl);
+            }
+        }
         return cl;
     }
 
@@ -509,7 +522,7 @@ public class ObjectStreamClass implements Serializable {
             fieldRefl = getReflector(fields, this);
         } catch (InvalidClassException ex) {
             // field mismatches impossible when matching local fields vs. self
-            throw new InternalError();
+            throw new InternalError(ex);
         }
 
         if (deserializeEx == null) {
@@ -959,7 +972,7 @@ public class ObjectStreamClass implements Serializable {
                 return cons.newInstance();
             } catch (IllegalAccessException ex) {
                 // should not occur, as access checks have been suppressed
-                throw new InternalError();
+                throw new InternalError(ex);
             }
         } else {
             throw new UnsupportedOperationException();
@@ -987,7 +1000,7 @@ public class ObjectStreamClass implements Serializable {
                 }
             } catch (IllegalAccessException ex) {
                 // should not occur, as access checks have been suppressed
-                throw new InternalError();
+                throw new InternalError(ex);
             }
         } else {
             throw new UnsupportedOperationException();
@@ -1018,7 +1031,7 @@ public class ObjectStreamClass implements Serializable {
                 }
             } catch (IllegalAccessException ex) {
                 // should not occur, as access checks have been suppressed
-                throw new InternalError();
+                throw new InternalError(ex);
             }
         } else {
             throw new UnsupportedOperationException();
@@ -1046,7 +1059,7 @@ public class ObjectStreamClass implements Serializable {
                 }
             } catch (IllegalAccessException ex) {
                 // should not occur, as access checks have been suppressed
-                throw new InternalError();
+                throw new InternalError(ex);
             }
         } else {
             throw new UnsupportedOperationException();
@@ -1071,11 +1084,11 @@ public class ObjectStreamClass implements Serializable {
                     throw (ObjectStreamException) th;
                 } else {
                     throwMiscException(th);
-                    throw new InternalError();  // never reached
+                    throw new InternalError(th);  // never reached
                 }
             } catch (IllegalAccessException ex) {
                 // should not occur, as access checks have been suppressed
-                throw new InternalError();
+                throw new InternalError(ex);
             }
         } else {
             throw new UnsupportedOperationException();
@@ -1100,11 +1113,11 @@ public class ObjectStreamClass implements Serializable {
                     throw (ObjectStreamException) th;
                 } else {
                     throwMiscException(th);
-                    throw new InternalError();  // never reached
+                    throw new InternalError(th);  // never reached
                 }
             } catch (IllegalAccessException ex) {
                 // should not occur, as access checks have been suppressed
-                throw new InternalError();
+                throw new InternalError(ex);
             }
         } else {
             throw new UnsupportedOperationException();
@@ -1156,7 +1169,14 @@ public class ObjectStreamClass implements Serializable {
             end = end.getSuperclass();
         }
 
+        HashSet<String> oscNames = new HashSet<>(3);
+
         for (ObjectStreamClass d = this; d != null; d = d.superDesc) {
+            if (oscNames.contains(d.name)) {
+                throw new InvalidClassException("Circular reference.");
+            } else {
+                oscNames.add(d.name);
+            }
 
             // search up inheritance hierarchy for class with matching name
             String searchName = (d.cl != null) ? d.cl.getName() : d.name;
@@ -1326,9 +1346,9 @@ public class ObjectStreamClass implements Serializable {
      * Access checks are disabled on the returned constructor (if any), since
      * the defining class may still be non-public.
      */
-    private static Constructor getExternalizableConstructor(Class<?> cl) {
+    private static Constructor<?> getExternalizableConstructor(Class<?> cl) {
         try {
-            Constructor cons = cl.getDeclaredConstructor((Class<?>[]) null);
+            Constructor<?> cons = cl.getDeclaredConstructor((Class<?>[]) null);
             cons.setAccessible(true);
             return ((cons.getModifiers() & Modifier.PUBLIC) != 0) ?
                 cons : null;
@@ -1342,7 +1362,7 @@ public class ObjectStreamClass implements Serializable {
      * superclass, or null if none found.  Access checks are disabled on the
      * returned constructor (if any).
      */
-    private static Constructor getSerializableConstructor(Class<?> cl) {
+    private static Constructor<?> getSerializableConstructor(Class<?> cl) {
         Class<?> initCl = cl;
         while (Serializable.class.isAssignableFrom(initCl)) {
             if ((initCl = initCl.getSuperclass()) == null) {
@@ -1350,7 +1370,7 @@ public class ObjectStreamClass implements Serializable {
             }
         }
         try {
-            Constructor cons = initCl.getDeclaredConstructor((Class<?>[]) null);
+            Constructor<?> cons = initCl.getDeclaredConstructor((Class<?>[]) null);
             int mods = cons.getModifiers();
             if ((mods & Modifier.PRIVATE) != 0 ||
                 ((mods & (Modifier.PUBLIC | Modifier.PROTECTED)) == 0 &&
@@ -1731,7 +1751,7 @@ public class ObjectStreamClass implements Serializable {
                 dout.writeUTF("()V");
             }
 
-            Constructor[] cons = cl.getDeclaredConstructors();
+            Constructor<?>[] cons = cl.getDeclaredConstructors();
             MemberSignature[] consSigs = new MemberSignature[cons.length];
             for (int i = 0; i < cons.length; i++) {
                 consSigs[i] = new MemberSignature(cons[i]);
@@ -1792,7 +1812,7 @@ public class ObjectStreamClass implements Serializable {
             }
             return hash;
         } catch (IOException ex) {
-            throw new InternalError();
+            throw new InternalError(ex);
         } catch (NoSuchAlgorithmException ex) {
             throw new SecurityException(ex.getMessage());
         }
@@ -1820,7 +1840,7 @@ public class ObjectStreamClass implements Serializable {
             signature = getClassSignature(field.getType());
         }
 
-        public MemberSignature(Constructor cons) {
+        public MemberSignature(Constructor<?> cons) {
             member = cons;
             name = cons.getName();
             signature = getMethodSignature(
@@ -1848,8 +1868,10 @@ public class ObjectStreamClass implements Serializable {
         private final ObjectStreamField[] fields;
         /** number of primitive fields */
         private final int numPrimFields;
-        /** unsafe field keys */
-        private final long[] keys;
+        /** unsafe field keys for reading fields - may contain dupes */
+        private final long[] readKeys;
+        /** unsafe fields keys for writing fields - no dupes */
+        private final long[] writeKeys;
         /** field data offsets */
         private final int[] offsets;
         /** field type codes */
@@ -1867,16 +1889,22 @@ public class ObjectStreamClass implements Serializable {
         FieldReflector(ObjectStreamField[] fields) {
             this.fields = fields;
             int nfields = fields.length;
-            keys = new long[nfields];
+            readKeys = new long[nfields];
+            writeKeys = new long[nfields];
             offsets = new int[nfields];
             typeCodes = new char[nfields];
             ArrayList<Class<?>> typeList = new ArrayList<>();
+            Set<Long> usedKeys = new HashSet<>();
+
 
             for (int i = 0; i < nfields; i++) {
                 ObjectStreamField f = fields[i];
                 Field rf = f.getField();
-                keys[i] = (rf != null) ?
+                long key = (rf != null) ?
                     unsafe.objectFieldOffset(rf) : Unsafe.INVALID_FIELD_OFFSET;
+                readKeys[i] = key;
+                writeKeys[i] = usedKeys.add(key) ?
+                    key : Unsafe.INVALID_FIELD_OFFSET;
                 offsets[i] = f.getOffset();
                 typeCodes[i] = f.getTypeCode();
                 if (!f.isPrimitive()) {
@@ -1912,7 +1940,7 @@ public class ObjectStreamClass implements Serializable {
              * in array should be equal to Unsafe.INVALID_FIELD_OFFSET.
              */
             for (int i = 0; i < numPrimFields; i++) {
-                long key = keys[i];
+                long key = readKeys[i];
                 int off = offsets[i];
                 switch (typeCodes[i]) {
                     case 'Z':
@@ -1963,7 +1991,7 @@ public class ObjectStreamClass implements Serializable {
                 throw new NullPointerException();
             }
             for (int i = 0; i < numPrimFields; i++) {
-                long key = keys[i];
+                long key = writeKeys[i];
                 if (key == Unsafe.INVALID_FIELD_OFFSET) {
                     continue;           // discard value
                 }
@@ -2024,7 +2052,7 @@ public class ObjectStreamClass implements Serializable {
                 switch (typeCodes[i]) {
                     case 'L':
                     case '[':
-                        vals[offsets[i]] = unsafe.getObject(obj, keys[i]);
+                        vals[offsets[i]] = unsafe.getObject(obj, readKeys[i]);
                         break;
 
                     default:
@@ -2045,7 +2073,7 @@ public class ObjectStreamClass implements Serializable {
                 throw new NullPointerException();
             }
             for (int i = numPrimFields; i < fields.length; i++) {
-                long key = keys[i];
+                long key = writeKeys[i];
                 if (key == Unsafe.INVALID_FIELD_OFFSET) {
                     continue;           // discard value
                 }
@@ -2148,7 +2176,7 @@ public class ObjectStreamClass implements Serializable {
         }
     }
 
-    private static native Object getFastFieldReflector(Object fields);
+    private static native Object getFastFieldReflector(ObjectStreamField[] fields);
     
     /**
      * FieldReflector cache lookup key.  Keys are considered equal if they

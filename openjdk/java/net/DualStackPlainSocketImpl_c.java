@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -58,6 +58,7 @@ JNIEXPORT void JNICALL Java_java_net_DualStackPlainSocketImpl_initIDs
   (JNIEnv *env, jclass clazz) {
 
     jclass cls = (*env)->FindClass(env, "java/net/InetSocketAddress");
+    CHECK_NULL(cls);
     isa_class = (*env)->NewGlobalRef(env, cls);
     isa_ctorID = (*env)->GetMethodID(env, cls, "<init>",
                                      "(Ljava/net/InetAddress;I)V");
@@ -97,7 +98,9 @@ static cli.System.Net.Sockets.Socket socket0
  * Signature: (ILjava/net/InetAddress;I)V
  */
 static void bind0
-  (JNIEnv env, cli.System.Net.Sockets.Socket fd, InetAddress iaObj, int port) {
+  (JNIEnv env, cli.System.Net.Sockets.Socket fd, InetAddress iaObj, int port,
+   boolean exclBind)
+{
     SOCKETADDRESS sa;
     sa = new SOCKETADDRESS();
     int rv;
@@ -107,7 +110,7 @@ static void bind0
       return;
     }
 
-    rv = NET_Bind(fd, sa);
+    rv = NET_WinBind(fd, sa, exclBind);
 
     if (rv == SOCKET_ERROR)
         NET_ThrowNew(env, WSAGetLastError(), "JVM_Bind");
@@ -184,7 +187,7 @@ static void waitForConnect
     }
 
     /*
-     * Socket is writable or error occured. On some Windows editions
+     * Socket is writable or error occurred. On some Windows editions
      * the socket will appear writable when the connect fails so we
      * check for error rather than writable.
      */

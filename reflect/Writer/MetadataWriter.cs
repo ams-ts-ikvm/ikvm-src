@@ -58,9 +58,23 @@ namespace IKVM.Reflection.Writer
 			bb.WriteTo(stream);
 		}
 
+		internal void WriteAsciiz(string value)
+		{
+			foreach (char c in value)
+			{
+				stream.WriteByte((byte)c);
+			}
+			stream.WriteByte(0);
+		}
+
 		internal void Write(byte[] value)
 		{
 			stream.Write(value, 0, value.Length);
+		}
+
+		internal void Write(byte[] buffer, int offset, int count)
+		{
+			stream.Write(buffer, offset, count);
 		}
 
 		internal void Write(byte value)

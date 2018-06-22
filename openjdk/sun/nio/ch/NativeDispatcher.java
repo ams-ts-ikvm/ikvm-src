@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2002, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -36,6 +36,14 @@ import java.nio.ByteBuffer;
 abstract class NativeDispatcher
 {
     abstract int read(FileDescriptor fd, byte[] buf, int offset, int length) throws IOException;
+
+    /**
+     * Returns {@code true} if pread/pwrite needs to be synchronized with
+     * position sensitive methods.
+     */
+    boolean needsPositionLock() {
+        return false;
+    }
 
     abstract int write(FileDescriptor fd, byte[] buf, int offset, int length) throws IOException;
 

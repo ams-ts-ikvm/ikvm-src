@@ -1,5 +1,5 @@
 /* ZipFile.java --
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2008, 2011
+   Copyright (C) 2001, 2014
    Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
@@ -51,6 +51,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.stream.Stream;
 import static java.util.zip.ZipConstants64.*;
 
 /**
@@ -95,6 +96,7 @@ public class ZipFile implements ZipConstants, Closeable
   private LinkedHashMap<String, ZipEntry> entries;
 
   private boolean closed = false;
+  final boolean hasLocHeader;
 
   /**
    * Opens a Zip file with the given name for reading.
@@ -189,12 +191,14 @@ public class ZipFile implements ZipConstants, Closeable
     this.raf = new RandomAccessFile(file, "r");
     this.name = file.getPath();
     this.charset = charset;
+    this.hasLocHeader = raf.length() >= 4 && raf.readInt() == (int)((LOCSIG << 24) | ((LOCSIG & 0xFF00) << 8) | ((LOCSIG & 0xFF0000) >> 8) | (LOCSIG >> 24));
 
     boolean valid = false;
 
     try 
       {
         readEntries();
+        ClassStubZipEntry.expandIkvmClasses(this, entries);
         valid = true;
       }
     catch (EOFException _)
@@ -286,7 +290,7 @@ public class ZipFile implements ZipConstants, Closeable
         ZipEntry entry = new ZipEntry();
         entry.flag = flags;
         entry.method = method;
-        entry.time = inp.readLeUnsignedInt();
+        entry.dostime = inp.readLeUnsignedInt();
         entry.crc = inp.readLeUnsignedInt();
         entry.csize = inp.readLeUnsignedInt();
         entry.size = inp.readLeUnsignedInt();
@@ -301,7 +305,7 @@ public class ZipFile implements ZipConstants, Closeable
           {
             byte[] extra = new byte[extraLen];
             inp.readFully(extra);
-            entry.extra = extra;
+            entry.setExtra0(extra, false);
             readZip64ExtraField(entry, extra);
           }
         if (commentLen > 0)
@@ -408,6 +412,12 @@ public class ZipFile implements ZipConstants, Closeable
     return new ZipEntryEnumeration(entries.values().iterator());
   }
 
+  public Stream<? extends ZipEntry> stream()
+  {
+    checkClosed();
+    return entries.values().stream();
+  }
+
   /**
    * Searches for a zip entry in this archive with the given name.
    *
@@ -457,6 +467,9 @@ public class ZipFile implements ZipConstants, Closeable
     if (zipEntry == null)
       return null;
 
+    if (zipEntry instanceof ClassStubZipEntry)
+      return ((ClassStubZipEntry)zipEntry).getInputStream();
+
     PartialInputStream inp = new PartialInputStream(1024) {
         void lazyInitialSeek() throws IOException {
             seek(zipEntry.offset);
@@ -481,7 +494,7 @@ public class ZipFile implements ZipConstants, Closeable
       case ZipOutputStream.DEFLATED:
         inp.addDummyByte();
         final Inflater inf = new Inflater(true);
-        final int sz = (int) entry.getSize();
+        final int sz = (int) zipEntry.getSize();
         return new InflaterInputStream(inp, inf)
         {
           private boolean closed;
@@ -881,5 +894,15 @@ public class ZipFile implements ZipConstants, Closeable
     {
       dummyByteCount = 1;
     }
+  }
+
+  static {
+    sun.misc.SharedSecrets.setJavaUtilZipFileAccess(
+      new sun.misc.JavaUtilZipFileAccess() {
+        public boolean startsWithLocHeader(ZipFile zip) {
+          return zip.hasLocHeader;
+        }
+      }
+    );
   }
 }

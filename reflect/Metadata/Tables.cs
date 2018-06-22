@@ -388,7 +388,7 @@ namespace IKVM.Reflection.Metadata
 
 	abstract class Table<T> : Table
 	{
-		internal T[] records = new T[1];
+		internal T[] records = Empty<T>.Array;
 		protected int rowCount;
 
 		internal sealed override int RowCount
@@ -406,9 +406,7 @@ namespace IKVM.Reflection.Metadata
 		{
 			if (rowCount == records.Length)
 			{
-				T[] newarr = new T[records.Length * 2];
-				Array.Copy(records, newarr, records.Length);
-				records = newarr;
+				Array.Resize(ref records, Math.Max(16, records.Length * 2));
 			}
 			records[rowCount++] = newRecord;
 			return rowCount;
@@ -620,7 +618,7 @@ namespace IKVM.Reflection.Metadata
 		{
 			internal int ResolutionScope;
 			internal int TypeName;
-			internal int TypeNameSpace;
+			internal int TypeNamespace;
 		}
 
 		internal override void Read(MetadataReader mr)
@@ -629,7 +627,7 @@ namespace IKVM.Reflection.Metadata
 			{
 				records[i].ResolutionScope = mr.ReadResolutionScope();
 				records[i].TypeName = mr.ReadStringIndex();
-				records[i].TypeNameSpace = mr.ReadStringIndex();
+				records[i].TypeNamespace = mr.ReadStringIndex();
 			}
 		}
 
@@ -639,7 +637,7 @@ namespace IKVM.Reflection.Metadata
 			{
 				mw.WriteResolutionScope(records[i].ResolutionScope);
 				mw.WriteStringIndex(records[i].TypeName);
-				mw.WriteStringIndex(records[i].TypeNameSpace);
+				mw.WriteStringIndex(records[i].TypeNamespace);
 			}
 		}
 

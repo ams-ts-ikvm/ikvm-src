@@ -122,6 +122,7 @@ public final class Winsock
     public static final int SO_RCVBUF = SocketOptionName.ReceiveBuffer;
     public static final int SO_KEEPALIVE = SocketOptionName.KeepAlive;
     public static final int SO_REUSEADDR = SocketOptionName.ReuseAddress;
+    public static final int SO_EXCLUSIVEADDRUSE = SocketOptionName.ExclusiveAddressUse;
     public static final int SO_BROADCAST = SocketOptionName.Broadcast;
     public static final int SO_RCVTIMEO = SocketOptionName.ReceiveTimeout;
     public static final int SO_ERROR = SocketOptionName.Error;
@@ -137,6 +138,7 @@ public final class Winsock
     public static final int IPV6_ADD_MEMBERSHIP = SocketOptionName.AddMembership;
     public static final int IPV6_DROP_MEMBERSHIP = SocketOptionName.DropMembership;
     public static final int IPV6_V6ONLY = 27;
+    public static final int IPV6_TCLASS = 39;
 
     public static final int SIO_UDP_CONNRESET = 0x9800000C;
 
@@ -145,6 +147,8 @@ public final class Winsock
 
     public static final int FIONREAD = (int)IOControlCode.DataToRead;
     public static final int FIONBIO = (int)IOControlCode.NonBlockingIO;
+
+    public static final int MAX_PACKET_LEN = 0xFFFF;
 
     public static int WSAGetLastError()
     {
